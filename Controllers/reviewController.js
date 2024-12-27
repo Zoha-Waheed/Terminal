@@ -3,45 +3,56 @@ const Visitor = require("../Models/visitorModel.js");
 const Attraction = require("../Models/attractionModel.js");
 
 exports.createReview = async (req, res) => {
-  const { attraction, visitor, score, comment } = req.body;
-
-  try {
-    // Validate Attraction ID
-    const attractionExists = await Attraction.findById(attraction);
-    if (!attractionExists) {
-      return res.status(404).json({ error: "Attraction not found" });
+    const { attraction, visitor, score, comment } = req.body;
+  
+    try {
+      // Validate Attraction ID
+      const attractionExists = await Attraction.findById(attraction);
+      if (!attractionExists) {
+        return res.status(404).json({ error: "Attraction not found" });
+      }
+  
+      // Validate Visitor ID
+      const visitorExists = await Visitor.findById(visitor);
+      if (!visitorExists) {
+        return res.status(404).json({ error: "Visitor not found" });
+      }
+  
+      // Check if the visitor has visited the attraction
+      if (!visitorExists.visitedAttractions.includes(attraction)) {
+        return res
+          .status(400)
+          .json({ error: "Visitor has not visited this attraction" });
+      }
+  
+      // Ensure the visitor has not already reviewed this attraction
+      const existingReview = await Review.findOne({ attraction, visitor });
+      if (existingReview) {
+        return res
+          .status(400)
+          .json({ error: "Visitor has already reviewed this attraction" });
+      }
+  
+      // Create and save the review
+      const review = new Review({ attraction, visitor, score, comment });
+      const savedReview = await review.save();
+  
+      // Update the rating of the attraction based on all reviews
+      const reviews = await Review.find({ attraction });
+      const totalScore = reviews.reduce((sum, review) => sum + review.score, 0);
+      const averageRating = totalScore / reviews.length;
+  
+      // Update the attraction's rating
+      attractionExists.rating = averageRating;
+      await attractionExists.save();
+  
+      res.status(201).json(savedReview);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
+  };
+  
 
-    // Validate Visitor ID
-    const visitorExists = await Visitor.findById(visitor);
-    if (!visitorExists) {
-      return res.status(404).json({ error: "Visitor not found" });
-    }
-
-    // Check if the visitor has visited the attraction
-    if (!visitorExists.visitedAttractions.includes(attraction)) {
-      return res
-        .status(400)
-        .json({ error: "Visitor has not visited this attraction" });
-    }
-
-    // Ensure the visitor has not already reviewed this attraction
-    const existingReview = await Review.findOne({ attraction, visitor });
-    if (existingReview) {
-      return res
-        .status(400)
-        .json({ error: "Visitor has already reviewed this attraction" });
-    }
-
-    // Create and save the review
-    const review = new Review({ attraction, visitor, score, comment });
-    const savedReview = await review.save();
-
-    res.status(201).json(savedReview);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
 exports.getReviews = async (req, res) => {
   try {
     const reviews = await Review.find().populate("attraction visitor");
